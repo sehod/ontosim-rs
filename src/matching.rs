@@ -24,11 +24,7 @@ pub struct ExactMatching;
 
 impl Matching for ExactMatching {
     fn similarity(&self, lhs: &Node, rhs: &Node) -> f64 {
-        if lhs.label == rhs.label {
-            1.0
-        } else {
-            0.0
-        }
+        if lhs.label == rhs.label { 1.0 } else { 0.0 }
     }
 }
 
@@ -62,9 +58,21 @@ impl Matching for EmbeddingMatching {
 pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
     assert_eq!(a.len(), b.len(), "vector dimensions must match");
 
-    let dot: f64 = a.iter().zip(b.iter()).map(|(&x, &y)| x as f64 * y as f64).sum();
-    let mag_a: f64 = a.iter().map(|&x| (x as f64) * (x as f64)).sum::<f64>().sqrt();
-    let mag_b: f64 = b.iter().map(|&x| (x as f64) * (x as f64)).sum::<f64>().sqrt();
+    let dot: f64 = a
+        .iter()
+        .zip(b.iter())
+        .map(|(&x, &y)| x as f64 * y as f64)
+        .sum();
+    let mag_a: f64 = a
+        .iter()
+        .map(|&x| (x as f64) * (x as f64))
+        .sum::<f64>()
+        .sqrt();
+    let mag_b: f64 = b
+        .iter()
+        .map(|&x| (x as f64) * (x as f64))
+        .sum::<f64>()
+        .sqrt();
 
     let magnitude = mag_a * mag_b;
     if magnitude == 0.0 {

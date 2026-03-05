@@ -104,6 +104,7 @@ fn compute_subforest_similarity(
 ///   Case 1 — ST(i) is one part of ST(j): max over children of j
 ///   Case 2 — ST(j) is one part of ST(i): max over children of i
 ///   Case 3 — mutual match: subforest(i,j) + sim(root_i, root_j)
+#[allow(clippy::too_many_arguments)] // Internal DP helper; bundling args into a struct adds indirection without clarity.
 fn compute_subtree_similarity(
     t1: &Tree,
     t2: &Tree,

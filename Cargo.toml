@@ -1,8 +1,13 @@
 [package]
 name = "ontosim"
 version = "0.1.0"
+authors = ["Seth Hodgson <seth.hodgson@outlook.com>"]
 edition = "2024"
-license = "MIT"
 description = "Structural and semantic similarity comparison of ontology trees"
+license = "MIT"
+repository = "https://github.com/sehod/ontosim-rs"
+readme = "README.md"
+keywords = ["ontology", "similarity", "tree-matching", "alignment", "semantic-similarity"]
+categories = ["algorithms"]
 
 [dependencies]

@@ -3,6 +3,7 @@
 //! Used internally by the tree similarity algorithm to find the optimal
 //! pairing of child subtrees between two nodes (the KM step in the paper).
 
+use std::cmp::Reverse;
 use std::collections::BTreeSet;
 
 use crate::cache::{SimilarityCache, SimilarityResult};
@@ -142,7 +143,7 @@ fn find_min_lines(costs: &[Vec<f64>], dim: usize) -> LineCoverage {
     // Working copies sorted by descending zero count.
     // Each entry is (original_kind, zero_positions_copy).
     let mut temp: Vec<Line> = row_lines.iter().chain(col_lines.iter()).cloned().collect();
-    temp.sort_by(|a, b| b.num_zeros().cmp(&a.num_zeros()));
+    temp.sort_by_key(|l| Reverse(l.num_zeros()));
 
     let mut covered = vec![vec![0i32; dim]; dim];
     let mut covered_zero_count = 0usize;
@@ -154,11 +155,10 @@ fn find_min_lines(costs: &[Vec<f64>], dim: usize) -> LineCoverage {
 
         match line.kind {
             LineKind::Row(row) => {
-                for j in 0..dim {
-                    covered[row][j] += 1;
-                    if line.zero_positions.contains(&j) && covered[row][j] == 1 {
+                for (j, cell) in covered[row].iter_mut().enumerate().take(dim) {
+                    *cell += 1;
+                    if line.zero_positions.contains(&j) && *cell == 1 {
                         covered_zero_count += 1;
-                        // Reduce the corresponding column line's zero set.
                         if let Some(pos) = temp
                             .iter()
                             .position(|l| matches!(l.kind, LineKind::Col(c) if c == j))
@@ -167,16 +167,16 @@ fn find_min_lines(costs: &[Vec<f64>], dim: usize) -> LineCoverage {
                             if temp[pos].zero_positions.is_empty() {
                                 temp.remove(pos);
                             } else {
-                                temp.sort_by(|a, b| b.num_zeros().cmp(&a.num_zeros()));
+                                temp.sort_by_key(|l| Reverse(l.num_zeros()));
                             }
                         }
                     }
                 }
             }
             LineKind::Col(col) => {
-                for i in 0..dim {
-                    covered[i][col] += 1;
-                    if line.zero_positions.contains(&i) && covered[i][col] == 1 {
+                for (i, cover_row) in covered.iter_mut().enumerate().take(dim) {
+                    cover_row[col] += 1;
+                    if line.zero_positions.contains(&i) && cover_row[col] == 1 {
                         covered_zero_count += 1;
                         if let Some(pos) = temp
                             .iter()
@@ -186,7 +186,7 @@ fn find_min_lines(costs: &[Vec<f64>], dim: usize) -> LineCoverage {
                             if temp[pos].zero_positions.is_empty() {
                                 temp.remove(pos);
                             } else {
-                                temp.sort_by(|a, b| b.num_zeros().cmp(&a.num_zeros()));
+                                temp.sort_by_key(|l| Reverse(l.num_zeros()));
                             }
                         }
                     }
@@ -276,7 +276,7 @@ fn make_assignment(
         };
 
         // Remove the complementary line for the assigned row/col.
-        lines.retain(|l| !(l.is_row && l.index == row) && !(!l.is_row && l.index == col));
+        lines.retain(|l| !(l.is_row && l.index == row || !l.is_row && l.index == col));
 
         // Update remaining lines: the assigned column can't be used by any row
         // line, and the assigned row can't be used by any column line.
@@ -314,22 +314,21 @@ fn make_assignment(
 
 fn minimize_uncovered(costs: &mut [Vec<f64>], coverage: &LineCoverage, dim: usize) {
     let mut min_value = f64::INFINITY;
-    for i in 0..dim {
-        for j in 0..dim {
-            if coverage.covered[i][j] == 0 && costs[i][j] < min_value {
-                min_value = costs[i][j];
+    for (cost_row, cover_row) in costs.iter().zip(coverage.covered.iter()).take(dim) {
+        for (&cost, &cover) in cost_row.iter().zip(cover_row.iter()).take(dim) {
+            if cover == 0 && cost < min_value {
+                min_value = cost;
             }
         }
     }
 
-    for i in 0..dim {
-        for j in 0..dim {
-            if costs[i][j] != 0.0 {
-                let cover_count = coverage.covered[i][j];
-                if cover_count == 0 {
-                    costs[i][j] -= min_value;
-                } else if cover_count == 2 {
-                    costs[i][j] += min_value;
+    for (cost_row, cover_row) in costs.iter_mut().zip(coverage.covered.iter()).take(dim) {
+        for (cost, &cover) in cost_row.iter_mut().zip(cover_row.iter()).take(dim) {
+            if *cost != 0.0 {
+                if cover == 0 {
+                    *cost -= min_value;
+                } else if cover == 2 {
+                    *cost += min_value;
                 }
             }
         }
