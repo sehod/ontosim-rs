@@ -56,7 +56,11 @@ pub fn compute(t1: &Tree, t2: &Tree, matching: &dyn Matching) -> SimilarityResul
         }
     }
 
-    cache.get_subtree(m - 1, n - 1)
+    let mut result = cache.get_subtree(m - 1, n - 1);
+    result
+        .mappings
+        .sort_by(|a, b| b.sim.total_cmp(&a.sim));
+    result
 }
 
 /// Subforest similarity: S_TREE(SF(i), SF(j))
@@ -303,6 +307,24 @@ mod tests {
             "expected 4.45, got {}",
             result.sim
         );
+    }
+
+    // -- Ordering --
+
+    #[test]
+    fn mappings_are_sorted_by_descending_score() {
+        let t1 = travel_tree();
+        let t2 = tour_tree();
+        let result = compute(&t1, &t2, &HardcodedMatching);
+
+        let scores: Vec<f64> = result.mappings.iter().map(|m| m.sim).collect();
+        for window in scores.windows(2) {
+            assert!(
+                window[0] >= window[1],
+                "mappings not in descending order: {:?}",
+                scores
+            );
+        }
     }
 
     // -- Partial overlap --
