@@ -1,3 +1,6 @@
+use std::collections::{HashMap, HashSet};
+
+use crate::Tree;
 use crate::node::Node;
 
 /// Computes pairwise semantic similarity between two ontology nodes.
@@ -6,6 +9,79 @@ use crate::node::Node;
 /// produce a similarity score in the range `[0.0, 1.0]`.
 pub trait Matching {
     fn similarity(&self, lhs: &Node, rhs: &Node) -> f64;
+}
+
+/// Produces embedding vectors from node labels.
+///
+/// Implement this trait to plug in any embedding backend (local model,
+/// remote API, lookup table, etc.). The required method is [`embed`](Embedder::embed);
+/// override [`embed_batch`](Embedder::embed_batch) when your backend supports
+/// efficient batch requests.
+pub trait Embedder {
+    /// Computes an embedding vector for a single label.
+    fn embed(&self, label: &str) -> Vec<f32>;
+
+    /// Computes embedding vectors for a batch of labels.
+    ///
+    /// The default implementation calls [`embed`](Embedder::embed) sequentially.
+    /// Override this when your backend can process multiple labels in one round-trip.
+    fn embed_batch(&self, labels: &[&str]) -> Vec<Vec<f32>> {
+        labels.iter().map(|l| self.embed(l)).collect()
+    }
+}
+
+/// Populates embedding vectors on every node across all provided trees.
+///
+/// Labels are deduplicated across trees so that each unique label is embedded
+/// exactly once, even if it appears in multiple trees.
+///
+/// # Example
+///
+/// ```
+/// use ontosim::Tree;
+/// use ontosim::matching::{Embedder, embed_trees};
+///
+/// struct UnitEmbedder;
+/// impl Embedder for UnitEmbedder {
+///     fn embed(&self, _label: &str) -> Vec<f32> { vec![1.0] }
+/// }
+///
+/// let mut t1: Tree = "{A{B}}".parse().unwrap();
+/// let mut t2: Tree = "{A{C}}".parse().unwrap();
+/// embed_trees(&mut [&mut t1, &mut t2], &UnitEmbedder);
+///
+/// assert!(t1.subtree(0).embedding.is_some());
+/// assert!(t2.subtree(0).embedding.is_some());
+/// ```
+pub fn embed_trees(trees: &mut [&mut Tree], embedder: &dyn Embedder) {
+    let mut seen = HashSet::new();
+    let mut unique_labels = Vec::new();
+    for tree in trees.iter() {
+        for i in 0..tree.size() {
+            let label = &tree.subtree(i).label;
+            if seen.insert(label.clone()) {
+                unique_labels.push(label.clone());
+            }
+        }
+    }
+
+    let label_refs: Vec<&str> = unique_labels.iter().map(|s| s.as_str()).collect();
+    let embeddings = embedder.embed_batch(&label_refs);
+
+    let lookup: HashMap<&str, &Vec<f32>> = unique_labels
+        .iter()
+        .zip(embeddings.iter())
+        .map(|(l, e)| (l.as_str(), e))
+        .collect();
+
+    for tree in trees.iter_mut() {
+        for i in 0..tree.size() {
+            let label = tree.subtree(i).label.clone();
+            if let Some(emb) = lookup.get(label.as_str()) {
+                tree.subtree_mut(i).embedding = Some((*emb).clone());
+            }
+        }
+    }
 }
 
 /// Scores 1.0 for identical labels, 0.0 otherwise.
@@ -30,8 +106,9 @@ impl Matching for ExactMatching {
 
 /// Computes similarity via cosine similarity of pre-populated embedding vectors.
 ///
-/// Panics if either node is missing its embedding. Populate embeddings on the
-/// tree nodes (via [`Tree::subtree_mut`](crate::Tree::subtree_mut)) before use.
+/// Panics if either node is missing its embedding. Use [`embed_trees`] with an
+/// [`Embedder`] implementation to populate embeddings before calling this, or
+/// set them manually via [`Tree::subtree_mut`](crate::Tree::subtree_mut).
 pub struct EmbeddingMatching;
 
 impl Matching for EmbeddingMatching {
@@ -205,5 +282,97 @@ mod tests {
             assert_eq!(m.similarity(tree.subtree(0), tree.subtree(0)), 1.0);
             assert_eq!(m.similarity(tree.subtree(0), tree.subtree(1)), 0.0);
         }
+    }
+
+    // -- Embedder + embed_trees --
+
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// Test embedder that produces a deterministic 2-d vector from the first
+    /// byte of the label. Tracks how many times `embed_batch` is called and
+    /// the total number of labels it receives.
+    struct TestEmbedder {
+        batch_calls: AtomicUsize,
+        labels_seen: AtomicUsize,
+    }
+
+    impl TestEmbedder {
+        fn new() -> Self {
+            Self {
+                batch_calls: AtomicUsize::new(0),
+                labels_seen: AtomicUsize::new(0),
+            }
+        }
+    }
+
+    impl Embedder for TestEmbedder {
+        fn embed(&self, label: &str) -> Vec<f32> {
+            let byte = label.as_bytes().first().copied().unwrap_or(0) as f32;
+            vec![byte, byte * 0.5]
+        }
+
+        fn embed_batch(&self, labels: &[&str]) -> Vec<Vec<f32>> {
+            self.batch_calls.fetch_add(1, Ordering::Relaxed);
+            self.labels_seen.fetch_add(labels.len(), Ordering::Relaxed);
+            labels.iter().map(|l| self.embed(l)).collect()
+        }
+    }
+
+    #[test]
+    fn embed_trees_populates_all_nodes() {
+        let mut t1: Tree = "{A{B}{C}}".parse().unwrap();
+        let mut t2: Tree = "{X{Y}}".parse().unwrap();
+        let embedder = TestEmbedder::new();
+
+        embed_trees(&mut [&mut t1, &mut t2], &embedder);
+
+        for i in 0..t1.size() {
+            assert!(t1.subtree(i).embedding.is_some(), "t1 node {} missing", i);
+        }
+        for i in 0..t2.size() {
+            assert!(t2.subtree(i).embedding.is_some(), "t2 node {} missing", i);
+        }
+    }
+
+    #[test]
+    fn embed_trees_deduplicates_shared_labels() {
+        let mut t1: Tree = "{A{bus}{C}}".parse().unwrap();
+        let mut t2: Tree = "{X{bus}}".parse().unwrap();
+        let embedder = TestEmbedder::new();
+
+        embed_trees(&mut [&mut t1, &mut t2], &embedder);
+
+        assert_eq!(embedder.batch_calls.load(Ordering::Relaxed), 1);
+        // 5 unique labels: A, bus, C, X — not 5 (bus counted once)
+        assert_eq!(embedder.labels_seen.load(Ordering::Relaxed), 4);
+
+        // Both "bus" nodes get the same embedding.
+        let bus_t1 = t1.subtree(0).embedding.as_ref().unwrap();
+        let bus_t2 = t2.subtree(0).embedding.as_ref().unwrap();
+        assert_eq!(bus_t1, bus_t2);
+    }
+
+    #[test]
+    fn embed_trees_single_tree() {
+        let mut t: Tree = "{root{leaf}}".parse().unwrap();
+        let embedder = TestEmbedder::new();
+
+        embed_trees(&mut [&mut t], &embedder);
+
+        assert!(t.subtree(0).embedding.is_some());
+        assert!(t.subtree(1).embedding.is_some());
+    }
+
+    #[test]
+    fn embed_trees_then_similarity_roundtrip() {
+        let mut t1: Tree = "{A{B}{C}}".parse().unwrap();
+        let mut t2: Tree = "{A{B}{D}}".parse().unwrap();
+        let embedder = TestEmbedder::new();
+
+        embed_trees(&mut [&mut t1, &mut t2], &embedder);
+
+        let result = crate::similarity::compute(&t1, &t2, &EmbeddingMatching);
+        assert!(result.sim > 0.0, "expected positive similarity");
+        assert!(!result.mappings.is_empty());
     }
 }
