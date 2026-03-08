@@ -7,7 +7,13 @@ use crate::node::Node;
 ///
 /// Implementations define how node labels (or embeddings) are compared to
 /// produce a similarity score in the range `[0.0, 1.0]`.
+///
+/// See [`ExactMatching`] for a simple label-equality strategy and
+/// [`EmbeddingMatching`] for cosine-similarity over embedding vectors.
 pub trait Matching {
+    /// Returns the similarity between `lhs` and `rhs` as a value in
+    /// `[0.0, 1.0]`, where `1.0` indicates a perfect match and `0.0`
+    /// indicates no similarity.
     fn similarity(&self, lhs: &Node, rhs: &Node) -> f64;
 }
 
@@ -106,9 +112,13 @@ impl Matching for ExactMatching {
 
 /// Computes similarity via cosine similarity of pre-populated embedding vectors.
 ///
-/// Panics if either node is missing its embedding. Use [`embed_trees`] with an
-/// [`Embedder`] implementation to populate embeddings before calling this, or
-/// set them manually via [`Tree::subtree_mut`](crate::Tree::subtree_mut).
+/// Use [`embed_trees`] with an [`Embedder`] implementation to populate
+/// embeddings before running similarity, or set them manually via
+/// [`Tree::subtree_mut`](crate::Tree::subtree_mut).
+///
+/// # Panics
+///
+/// Panics if either node is missing its [`embedding`](crate::Node::embedding).
 pub struct EmbeddingMatching;
 
 impl Matching for EmbeddingMatching {

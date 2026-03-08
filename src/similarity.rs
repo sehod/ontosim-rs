@@ -23,6 +23,13 @@ use crate::matching::Matching;
 ///   [`ExactMatching`](crate::matching::ExactMatching) or
 ///   [`EmbeddingMatching`](crate::matching::EmbeddingMatching))
 ///
+/// # Returns
+///
+/// A [`SimilarityResult`] whose [`sim`](SimilarityResult::sim) field is the
+/// sum of all individual mapping scores (not normalized to `[0.0, 1.0]`).
+/// The [`mappings`](SimilarityResult::mappings) are sorted in **descending
+/// order** by score, so the strongest pairings appear first.
+///
 /// # Example
 ///
 /// ```

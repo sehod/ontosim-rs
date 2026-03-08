@@ -1,6 +1,6 @@
 [package]
 name = "ontosim"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Seth Hodgson <seth.hodgson@outlook.com>"]
 edition = "2024"
 description = "Structural and semantic similarity comparison of ontology trees"

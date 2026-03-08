@@ -33,6 +33,9 @@ pub struct Tree {
 
 impl Tree {
     /// Creates a new tree with the given label and child subtrees.
+    ///
+    /// The postorder node arena is built eagerly, so construction cost is
+    /// proportional to the total number of nodes in the tree.
     pub fn new(label: impl Into<String>, children: Vec<Tree>) -> Self {
         let label = label.into();
         let mut tree = Self {
@@ -55,12 +58,25 @@ impl Tree {
     }
 
     /// Returns the node at postorder position `i` (0-based index).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `i >= self.size()`.
     pub fn subtree(&self, i: usize) -> &Node {
         &self.postorder[i]
     }
 
-    /// Returns the child nodes of the node at postorder position `i`,
-    /// following the leftmost-child / sibling chain.
+    /// Returns the direct children of the node at postorder position `i`.
+    ///
+    /// "Subforest" in this context means the immediate children of node `i`,
+    /// not all of its descendants. The children are returned in left-to-right
+    /// order by following the leftmost-child / sibling chain.
+    ///
+    /// Returns an empty `Vec` for leaf nodes.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `i >= self.size()`.
     pub fn subforest(&self, i: usize) -> Vec<&Node> {
         let mut children = Vec::new();
         let mut next = self.postorder[i].leftmost_child;
@@ -76,6 +92,12 @@ impl Tree {
     ///
     /// Primarily used to set embeddings before running similarity with
     /// [`EmbeddingMatching`](crate::matching::EmbeddingMatching).
+    /// Prefer [`embed_trees`](crate::matching::embed_trees) for bulk
+    /// embedding; use this for fine-grained manual control.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `i >= self.size()`.
     pub fn subtree_mut(&mut self, i: usize) -> &mut Node {
         &mut self.postorder[i]
     }
@@ -173,6 +195,7 @@ impl fmt::Display for Tree {
     }
 }
 
+/// Error returned when parsing a [`Tree`] from bracket notation fails.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParseTreeError {
     UnbalancedBraces,

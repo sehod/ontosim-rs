@@ -4,15 +4,37 @@ use crate::node::Node;
 // NodeMapping
 // ---------------------------------------------------------------------------
 
-/// A pairing of one node from each tree, together with their similarity score.
+/// A single node-to-node pairing produced by the similarity algorithm.
 ///
-/// Indices are 0-based postorder positions into the respective tree arenas.
-/// Either side may be `None` when a node was unmatched (padding in the
-/// bipartite assignment step).
+/// Each mapping pairs one node from the left-hand tree with one node from
+/// the right-hand tree, along with their pairwise similarity score.
+///
+/// Use [`Tree::subtree`](crate::Tree::subtree) with the stored indices to
+/// look up the corresponding [`Node`] and its label:
+///
+/// ```
+/// # use ontosim::{Tree, similarity};
+/// # use ontosim::matching::ExactMatching;
+/// let t1: Tree = "{A{B}}".parse().unwrap();
+/// let t2: Tree = "{A{B}}".parse().unwrap();
+/// let result = similarity::compute(&t1, &t2, &ExactMatching);
+///
+/// for m in &result.mappings {
+///     let lhs_label = m.lhs.map(|i| t1.subtree(i).label.as_str());
+///     let rhs_label = m.rhs.map(|j| t2.subtree(j).label.as_str());
+///     println!("{:?} <-> {:?} (score: {:.2})", lhs_label, rhs_label, m.sim);
+/// }
+/// ```
 #[derive(Debug, Clone)]
 pub struct NodeMapping {
+    /// 0-based postorder index into the left-hand tree's arena, or `None` if
+    /// this side was unmatched during the bipartite assignment step.
     pub lhs: Option<usize>,
+    /// 0-based postorder index into the right-hand tree's arena, or `None` if
+    /// this side was unmatched during the bipartite assignment step.
     pub rhs: Option<usize>,
+    /// Pairwise similarity score for this node pairing, as determined by the
+    /// [`Matching`](crate::matching::Matching) strategy.
     pub sim: f64,
 }
 
@@ -20,18 +42,32 @@ pub struct NodeMapping {
 // SimilarityResult
 // ---------------------------------------------------------------------------
 
-/// Accumulated similarity score and the node-level mappings that produced it.
+/// The output of a similarity comparison between two trees (or subtrees).
 ///
-/// Implements [`PartialOrd`]/[`Ord`] by score so that `max()` selects the
-/// best result from a set of candidates — matching the algorithm's
-/// `MAX(S1, S2, S3)` pattern.
+/// Contains the aggregate similarity score and the individual node-level
+/// [`NodeMapping`]s that produced it.
+///
+/// When returned from [`similarity::compute`](crate::similarity::compute),
+/// the [`mappings`](Self::mappings) are sorted in **descending order** by
+/// score, so the strongest pairings appear first.
+///
+/// Implements [`Ord`] by [`sim`](Self::sim) so that `max()` naturally
+/// selects the best result from a set of candidates.
 #[derive(Debug, Clone)]
 pub struct SimilarityResult {
+    /// The aggregate similarity score — the sum of all individual mapping
+    /// scores. This is **not** normalized to `[0.0, 1.0]`; its magnitude
+    /// depends on how many nodes were successfully paired.
     pub sim: f64,
+    /// The node-level pairings that contribute to [`sim`](Self::sim).
+    ///
+    /// Sorted in descending order by score when returned from
+    /// [`similarity::compute`](crate::similarity::compute).
     pub mappings: Vec<NodeMapping>,
 }
 
 impl SimilarityResult {
+    /// Returns a result with score `0.0` and no mappings.
     pub fn zero() -> Self {
         Self {
             sim: 0.0,
