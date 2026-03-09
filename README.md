@@ -54,7 +54,7 @@ Additionally, this algorithm deterministially discovers the optimal set of simil
 
 To illustrate what this means, in the diagram above the subtree rooted at `traffic` in the left hand tree and the subtree rooted at `transport` in the right hand tree have root nodes that are similar. Their subtrees also contain two descendent node-pairs that are similar (`land`-`road` and `bus`-`bus`). The overall similarity score for these subtree root nodes starts as their label-to-label similarity score, and is then _boosted_ by any descendent matches within their subtrees. If there was some other node in the right hand tree that `traffic` in the left hand tree was similar to, even if their label-to-label similarity score was higher, if there were no matching descendents and this higher score was _lower_ than this boosted match of `traffic` with `transport` (due to their subtrees) it would be ignored. 
 
-Visually, the existing subtrees generate the following overall simiilarity score of 2.242, assuming a text vectorization `Embedder` impl that produces the following label-to-label scores:
+Visually, let's see how these existing subtrees generate the following overall similarity score of 2.242, assuming a text vectorization `Embedder` impl that produces the following label-to-label scores:
 
 | lhs label | rhs label | score | overall subtree score |
 | --------- | --------- | ----- | --------------------- |
@@ -159,7 +159,7 @@ This application demonstrates how to use the `Embedder` trait to handle text vec
 
 To see the library in action without writing any code:
 ```bash
-git clone https://github.com/sehod/ontosim-local
+git clone https://github.com/sehod/ontosim-local.git
 cd ontosim-local
 ./download_model.sh
 cargo build
